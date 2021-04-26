@@ -36,14 +36,44 @@ namespace dynamixel
 //#define CONTROL_LOOP_TIME 10;    //ms
 
 // Protocol 2.0
-#define ADDR_PRESENT_CURRENT_2 574 //126
-#define ADDR_PRESENT_VELOCITY_2 576 //128
-#define ADDR_PRESENT_POSITION_2 580 //132
+#define ADDR_PRESENT_CURRENT_2  640 // shall be configured as "Ind Data 7" (2 bytes)
+#define ADDR_PRESENT_VELOCITY_2 642 // shall be configured as "Ind Data 9" (4 bytes)
+#define ADDR_PRESENT_POSITION_2 649 // shall be configured as "Ind Data 13" (4 bytes)
+
+/* Note SR April 2021: These appear to not be used by the library to the extent that we've seen to far */
 #define ADDR_VELOCITY_TRAJECTORY_2 584 //136
 #define ADDR_POSITION_TRAJECTORY_2 588 //140
 #define ADDR_PROFILE_ACCELERATION_2 556 //108
 #define ADDR_PROFILE_VELOCITY_2 560 //112
 #define ADDR_GOAL_POSITION_2 564 //116
+
+
+// SEEDR April 2021: hardcode indirect data address as they're not covered
+// in the workbench tools
+#define ADDR_PRO_INDIRECT_ADDR_7_LOW 	0xB4  // 180
+#define ADDR_PRO_INDIRECT_ADDR_7_HIGH 	0xB5  // 181
+#define ADDR_PRO_INDIRECT_ADDR_8_LOW 	0xB6  // 182
+#define ADDR_PRO_INDIRECT_ADDR_8_HIGH 	0xB7  // 183
+#define ADDR_PRO_INDIRECT_ADDR_9_LOW 	0xB8  // 184
+#define ADDR_PRO_INDIRECT_ADDR_9_HIGH 	0xB9  // 185
+#define ADDR_PRO_INDIRECT_ADDR_10_LOW 	0xBA  // 186
+#define ADDR_PRO_INDIRECT_ADDR_10_HIGH 	0xBB  // 187
+#define ADDR_PRO_INDIRECT_ADDR_11_LOW 	0xBC  // 188
+#define ADDR_PRO_INDIRECT_ADDR_11_HIGH 	0xBD  // 189
+#define ADDR_PRO_INDIRECT_ADDR_12_LOW 	0xBE  // 190
+#define ADDR_PRO_INDIRECT_ADDR_12_HIGH 	0xBF  // 191
+#define ADDR_PRO_INDIRECT_ADDR_13_LOW 	0xC0  // 192
+#define ADDR_PRO_INDIRECT_ADDR_13_HIGH 	0xC1  // 193
+#define ADDR_PRO_INDIRECT_ADDR_14_LOW 	0xC2  // 194
+#define ADDR_PRO_INDIRECT_ADDR_14_HIGH 	0xC3  // 195
+#define ADDR_PRO_INDIRECT_ADDR_15_LOW 	0xC4  // 196
+#define ADDR_PRO_INDIRECT_ADDR_15_HIGH 	0xC5  // 197
+#define ADDR_PRO_INDIRECT_ADDR_16_LOW 	0xC6  // 198
+#define ADDR_PRO_INDIRECT_ADDR_16_HIGH 	0xC7  // 199
+
+
+
+
 
 
 #define LENGTH_PRESENT_CURRENT_2 2
@@ -94,6 +124,7 @@ public:
 
   virtual bool sendJointActuatorValue(std::vector<uint8_t> actuator_id, std::vector<robotis_manipulator::ActuatorValue> value_vector);
   virtual std::vector<robotis_manipulator::ActuatorValue> receiveJointActuatorValue(std::vector<uint8_t> actuator_id);
+  void configureCtrlTableIndirection(uint8_t id, const char* wb_toolbox_param_name, uint16_t* configuration_address); // SeedR
 
 
   /*****************************************************************************

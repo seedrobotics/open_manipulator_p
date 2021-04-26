@@ -36,8 +36,42 @@ void OpenManipulator::initOpenManipulator(bool using_actual_robot_state, STRING 
   *****************************************************************************/
   addWorld("world",    // world name
            "joint1");  // child name
+		   
+addJoint("joint1",   // my name
+           "world",    // parent name
+           "joint2",   // child name
+            math::vector3(0.0, 0.0, 0.126),                  // relative position
+            math::convertRPYToRotationMatrix(0.0, 0.0, 0.0), // relative orientation
+            Z_AXIS,    // axis of rotation
+            12,         // actuator id
+            M_PI,      // max joint limit (3.14 rad)
+            -M_PI,     // min joint limit (-3.14 rad)
+            1.0,       // coefficient
+            9.8406837e-02,                                                        // mass
+            math::inertiaMatrix(3.4543422e-05, -1.6031095e-08, -3.8375155e-07,
+                                3.2689329e-05, 2.8511935e-08,
+                                1.8850320e-05),                                   // inertial tensor
+            math::vector3(-3.0184870e-04, 5.4043684e-04, 0.018 + 2.9433464e-02)   // COM
+            );
 
-  addJoint("joint1",   // my name
+  addJoint("joint2",   // my name
+            "joint1",  // parent name
+            //"joint3",  // child name // PedroR: I suppose polymorphism handles this one as the last node
+            math::vector3(0.0, 0.0, 0.033),                  // relative position
+            math::convertRPYToRotationMatrix(0.0, 0.0, 0.0), // relative orientation
+            Y_AXIS,    // axis of rotation
+            13,         // actuator id
+            M_PI,      // max joint limit (3.14 rad)
+            -M_PI,     // min joint limit (-3.14 rad)
+            1.0,       // coefficient
+            1.3850917e-01,                                                        // mass
+            math::inertiaMatrix(3.3055381e-04, 9.7940978e-08, -3.8505711e-05,
+                                3.4290447e-04, -1.5717516e-06,
+                                6.0346498e-05),                                   // inertial tensor
+            math::vector3(1.0308393e-02, 3.7743363e-04, 1.0170197e-01)            // COM
+            );		   
+
+  /*addJoint("joint1",   // my name
            "world",    // parent name
            "joint2",   // child name
             math::vector3(0.0, 0.0, 0.126),                  // relative position
@@ -137,7 +171,7 @@ void OpenManipulator::initOpenManipulator(bool using_actual_robot_state, STRING 
                                 7.5980465e-05, 0.0,
                                 9.3127351e-05),                                   // inertial tensor
             math::vector3(4.4206755e-02, 3.6839985e-07, 8.9142216e-03)            // COM
-            );
+            );*/
 
   int gripper_id = -1;
   double gripper_len = 0.0;
@@ -146,7 +180,7 @@ void OpenManipulator::initOpenManipulator(bool using_actual_robot_state, STRING 
     gripper_id = 7;
     gripper_len = 0.1223;
   }
-  addTool("gripper",  // my name
+  /*addTool("gripper",  // my name
           "joint6",   // parent name
           math::vector3(gripper_len, 0.0, 0.0),               // relative position
           // math::vector3(0.150, 0.0, 0.0),                  // relative position
@@ -160,7 +194,7 @@ void OpenManipulator::initOpenManipulator(bool using_actual_robot_state, STRING 
                               2.2552871e-05, -3.1463634e-10,
                               1.7605306e-05),                                   // inertial tensor
           math::vector3(0.028 + 8.3720668e-03, 0.0246, -4.2836895e-07)          // COM
-          );
+          );*/
 
   /*****************************************************************************
   ** Initialize Kinematics 
@@ -187,12 +221,12 @@ void OpenManipulator::initOpenManipulator(bool using_actual_robot_state, STRING 
 
     // Set joint actuator id
     std::vector<uint8_t> jointDxlId;
-    jointDxlId.push_back(1);
-    jointDxlId.push_back(2);
-    jointDxlId.push_back(3);
-    jointDxlId.push_back(4);
+//    jointDxlId.push_back(1);
+    jointDxlId.push_back(12);
+    jointDxlId.push_back(13);
+/*    jointDxlId.push_back(4);
     jointDxlId.push_back(5);
-    jointDxlId.push_back(6);
+    jointDxlId.push_back(6);*/
     addJointActuator(JOINT_DYNAMIXEL, actuator_, jointDxlId, p_dxl_comm_arg);
 
     // Set joint actuator control mode
