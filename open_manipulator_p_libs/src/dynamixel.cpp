@@ -166,11 +166,94 @@ bool JointDynamixel::initialize(std::vector<uint8_t> actuator_id, STRING dxl_dev
       //   log::error("Please check your Dynamixel firmware version (v38~)");
       // }
 
+
+	  /* SEED ROBOTICS: March 2021 *******
+	  We need to find a way to match the control table of the PRO units with the one in SEED units
+	  - In PRO units, Present Current, Velocity and position start at memory index 574 and take a length of 10 bytes
+	  - SEED units' control table goes up to address 255 maximum. When an address above 255 is requested, it is truncated to the LOW BYTE
+	  
+	  Therefore, we need to find a match where the LOW byte of (Current, Velocity, POsition) triplet matches on both PRO and SEED units.
+	  
+	  We can achieve this with address 640 to 649.
+	  - In PRO units: 640 to 649 are indirect memory addresses ("Ind. Data 7" to "Ind Data 16"). 
+		These mirror the values of the memory addresses that we configure at positions 180 onwards.
+		We can abstractly view this as positions 180 onwards holding the "pointer" to the value we want to read and positions 640 onwards as the "de-referenced pointers"
+		holding the value that they point to.
+	  - The LOWBYTE(640) = 128, so in SEED units, the triplet (Current, Velocity, POsition) starts at position 128 all the way to 137, because Seed units
+	    at present only look at the LOW value of the Address (say a request to read position 640, would ignore the HIGH Byte, and the low byte of 640=128).
+	   (these are also implemented as pointers in SEED units, but they're not user-configurable; they're hardcoded to allow integration into the Manipulator framework; actuator FW version >= 37 needed )
+	  
+	  
+	  For PRO units, setup the pointers to mirror the data to addresses 640 to 649. 
+	  HEADS UP: bc memory addresses in PRO units are 2 byte (WORD), we configure the pointers in positions 180~199 (each pointer address is 2 bytes)
+	  but the actual mirrored value is always 1 byte (we provide the address for each of the bytes and the address is a 2 byte word).
+	  After configuration, the values are then shown in positions 640~649.
+
+	  See Robotis e-Manual for more information.
+
+	  *** 
+	  We'll now remap sequence of addresses 574-583 which corresponds to the triplet (Current, Velocity, Position), to positions 640~649 ("Ind.Data7" ~ "Ind.Data16").
+	  We shall NOT do this for SEED units bc this redirection is hardcoded in the fw
+	  */
+	  
+	  // TORQUE must be off to be able to manipulate configurations of the actuator
+	  // See e-Manual
+	  //disable();
+	  
+	  const char *model_name_= dynamixel_workbench_->getModelName(id, &log);
+	  uint16_t start_addr_ = 0;
+	  uint16_t current_addr_ = 0;
+	  
+	  /* SEEDR: this may be extended to include other families of actuators; */
+	  if (strncmp(model_name_, "SEED", strlen("SEED")) == 0) {
+		  // don't assign an address; seed units are already hard coded with this indirection
+		  start_addr_ = 0;
+		  
+	  } else if ( 	strncmp(model_name_, "XC", strlen("XC")) == 0 ||
+					strncmp(model_name_, "XM", strlen("XM")) == 0 ||
+					strncmp(model_name_, "XH", strlen("XH")) == 0   ) {
+		start_addr_ = ADDR_XC_XM_XH_INDIRECT_ADDR_35_LOW;
+			
+	  } else if ( 	strncmp(model_name_, "PRO", strlen("PRO")) == 0 ) {
+		start_addr_ = ADDR_PRO_INDIRECT_ADDR_7_LOW;  
+		
+	  } else {
+		STRING formatted_msg = "INDIRECT DATA SETUP: The type of actuator is unhandled in dynamixel.cpp. Inderect data won't be at addresses 640 onwards. Device ID " + std::to_string(id) + " model name " + model_name_;
+		log::error(formatted_msg.c_str());
+	  }	  
+	  
+	  if (start_addr_ != 0) {
+		  current_addr_ = start_addr_;
+		  
+		  STRING present_current_st = "Present_Current";		  
+		  const char* present_current_chr = present_current_st.c_str();
+		  configureCtrlTableIndirection(id, present_current_chr, &current_addr_);		  
+		  
+		  STRING present_velocity_st = "Present_Velocity";	
+		  const char* present_velocity_chr = present_velocity_st.c_str();
+		  configureCtrlTableIndirection(id, present_velocity_chr, &current_addr_);
+
+		  STRING present_position_st = "Present_Position";		  
+		  const char* present_position_chr = present_position_st.c_str();
+		  configureCtrlTableIndirection(id, present_position_chr, &current_addr_);
+		  
+		  // Based on PRO units, we assume 2 bytes for current and 4 bytes for velocity 
+		  // and 4 bytes for position. Check that the end address has advanced 10 WORD positions (20 bytes)
+		  // if not, then we will be misaligned (maybe the workbench abstraction provided
+		  // a parameter with only 2 bytes ?? or more??). Be verbose just in case
+		  if (current_addr_ != start_addr_ + 20) {
+			  log::error("SEED mods: Error setting up Data Indirection in the control table.");
+			  STRING formatted_msg = "The length of addresses configured (data provided via dyamixel_toolbox abstraction) was expected to be 20 but was only " + std::to_string(current_addr_ - start_addr_);
+			  
+			  log::error(formatted_msg.c_str());
+		  }
+	  }	  
+
       result = dynamixel_workbench_->writeRegister(id, return_delay_time_char, 0, &log);
       if (result == false)
       {
         log::error(log);
-        log::error("Please check your Dynamixel firmware version");
+        log::error("Unable to set Return Delay time. Please check your Dynamixel firmware version");
       }
     }
   }
@@ -359,7 +442,48 @@ std::vector<robotis_manipulator::ActuatorValue> JointDynamixel::receiveAllDynami
 
   return all_actuator;
 }
+/****************************************
+ SEED code to assist in configuring indirection
+ while still relying on the toolbox abstraction
+ attempt to configure indirection by relying on the Dynamixel Wokrbench
+ abstraction layer as much as possible
+*****************************************/
+void JointDynamixel::configureCtrlTableIndirection(uint8_t id, const char* wb_toolbox_param_name, uint16_t* indirect_address) {		  
+	const char* log = NULL;
+	
+	const ControlItem* current_ctrl_item_ = dynamixel_workbench_->getItemInfo(id, wb_toolbox_param_name, &log);
+	if (current_ctrl_item_ == NULL)
+	{
+		log::error(log);
 
+		STRING formated_error = "Unable to get control item \"" + STRING(wb_toolbox_param_name) + "\" for ID " + std::to_string(id) + ". File: " + __FILE__;
+		log::error(formated_error.c_str());
+	}	
+	else {
+	  uint16_t addr_to_mirror_ = current_ctrl_item_->address;
+	  uint8_t len_to_mirror_   = current_ctrl_item_->data_length;
+	  uint8_t data_[2];
+	  
+	  // the indirection addresses are not defined in dynamixel_item.cpp, so we'll need to hardcode them
+	  while (len_to_mirror_ > 0) {
+		  data_[0] = (uint8_t) (addr_to_mirror_ % 256);
+		  data_[1] = (uint8_t) (addr_to_mirror_ / 256);		  
+		  
+		  bool result = dynamixel_workbench_->writeRegister(id, *indirect_address, 2, data_, &log);
+		  if (result == false)
+		  {
+			log::error(log);
+			STRING formated_error = "Failure configuring Indirect Data address \"" + std::to_string(*indirect_address) + "\" for ID " + std::to_string(id) + ". File: " + __FILE__;
+			log::error(formated_error.c_str());				
+		  }
+		  
+		  // loop control variables
+		  addr_to_mirror_++;
+		  (*indirect_address) += 2; // each indrect Adress is configured as a 2 byte (WORD) address, bc Ctl Table addresses in DYN2 are always 2 bytes
+		  len_to_mirror_--;
+	  }
+	}
+}
 
 /*****************************************************************************
 ** Joint Dynamixel Profile Control Functions
@@ -636,6 +760,7 @@ bool JointDynamixelProfileControl::writeGoalProfilingControlValue(std::vector<ui
   }
   return true;
 }
+
 
 std::vector<robotis_manipulator::ActuatorValue> JointDynamixelProfileControl::receiveAllDynamixelValue(std::vector<uint8_t> actuator_id)
 {
@@ -972,3 +1097,4 @@ double GripperDynamixel::receiveDynamixelValue()
 
   return dynamixel_workbench_->convertValue2Radian(dynamixel_.id.at(0), get_value);
 }
+

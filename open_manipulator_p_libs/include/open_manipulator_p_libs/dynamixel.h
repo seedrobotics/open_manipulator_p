@@ -35,12 +35,13 @@ namespace dynamixel
 
 //#define CONTROL_LOOP_TIME 10;    //ms
 
-// Protocol 2.0
+// Protocol 2.0 
+// SEEDR: Modified to use the "Indirect Data" Addresses
 #define ADDR_PRESENT_CURRENT_2  640 // shall be configured as "Ind Data 7" (2 bytes)
 #define ADDR_PRESENT_VELOCITY_2 642 // shall be configured as "Ind Data 9" (4 bytes)
-#define ADDR_PRESENT_POSITION_2 649 // shall be configured as "Ind Data 13" (4 bytes)
+#define ADDR_PRESENT_POSITION_2 646 // shall be configured as "Ind Data 13" (4 bytes)
 
-/* Note SR April 2021: These appear to not be used by the library to the extent that we've seen to far */
+// Note SEEDR April 2021: These appear to not be used by the library to the extent that we've seen to far
 #define ADDR_VELOCITY_TRAJECTORY_2 584 //136
 #define ADDR_POSITION_TRAJECTORY_2 588 //140
 #define ADDR_PROFILE_ACCELERATION_2 556 //108
@@ -72,6 +73,9 @@ namespace dynamixel
 #define ADDR_PRO_INDIRECT_ADDR_16_HIGH 	0xC7  // 199
 
 
+// SEEDR debugging
+#define ADDR_XC_XM_XH_INDIRECT_ADDR_35_LOW 	590 // in the XM ctrl table, Position 640 reads Ind Data 35, so we need to
+											// map to that position accordingly
 
 
 
