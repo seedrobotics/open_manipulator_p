@@ -183,8 +183,11 @@ bool JointDynamixel::initialize(std::vector<uint8_t> actuator_id, STRING dxl_dev
 	    at present only look at the LOW value of the Address (say a request to read position 640, would ignore the HIGH Byte, and the low byte of 640=128).
 	   (these are also implemented as pointers in SEED units, but they're not user-configurable; they're hardcoded to allow integration into the Manipulator framework; actuator FW version >= 37 needed )
 	  
+	  - GOAL POSITION is added/mirrored after this triplet as a 4 byte value as well after the above, at positions 650 to 653
+		In Seed units this stays at position 138 to 141. Bear in mind that while this position in Seed units is a 4 byte 
+		position, the data range remains the same 0~4095. The use of 4 bytes is for compatibility purposes only.
 	  
-	  For PRO units, setup the pointers to mirror the data to addresses 640 to 649. 
+	  For PRO and XM units, setup the pointers to mirror the data to addresses 640 to 649. 
 	  HEADS UP: bc memory addresses in PRO units are 2 byte (WORD), we configure the pointers in positions 180~199 (each pointer address is 2 bytes)
 	  but the actual mirrored value is always 1 byte (we provide the address for each of the bytes and the address is a 2 byte word).
 	  After configuration, the values are then shown in positions 640~649.
@@ -202,7 +205,7 @@ bool JointDynamixel::initialize(std::vector<uint8_t> actuator_id, STRING dxl_dev
 	  
 	  const char *model_name_= dynamixel_workbench_->getModelName(id, &log);
 	  uint16_t start_addr_ = 0;
-	  uint16_t current_addr_ = 0;
+	  uint16_t current_ind_cfg_addr_ = 0;
 	  
 	  /* SEEDR: this may be extended to include other families of actuators; */
 	  if (strncmp(model_name_, "SEED", strlen("SEED")) == 0) {
@@ -223,27 +226,33 @@ bool JointDynamixel::initialize(std::vector<uint8_t> actuator_id, STRING dxl_dev
 	  }	  
 	  
 	  if (start_addr_ != 0) {
-		  current_addr_ = start_addr_;
+		  current_ind_cfg_addr_ = start_addr_;
 		  
 		  STRING present_current_st = "Present_Current";		  
 		  const char* present_current_chr = present_current_st.c_str();
-		  configureCtrlTableIndirection(id, present_current_chr, &current_addr_);		  
+		  configureCtrlTableIndirection(id, present_current_chr, &current_ind_cfg_addr_);		  
 		  
 		  STRING present_velocity_st = "Present_Velocity";	
 		  const char* present_velocity_chr = present_velocity_st.c_str();
-		  configureCtrlTableIndirection(id, present_velocity_chr, &current_addr_);
+		  configureCtrlTableIndirection(id, present_velocity_chr, &current_ind_cfg_addr_);
 
 		  STRING present_position_st = "Present_Position";		  
 		  const char* present_position_chr = present_position_st.c_str();
-		  configureCtrlTableIndirection(id, present_position_chr, &current_addr_);
+		  configureCtrlTableIndirection(id, present_position_chr, &current_ind_cfg_addr_);
+		  
+		  // must redirect GOAL POSITION as well bc it is written with SYNC_WRITE which requires
+		  // the same Ctrl address on all devices.
+		  STRING goal_position_st = "Goal_Position";		  
+		  const char* goal_position_chr = goal_position_st.c_str();
+		  configureCtrlTableIndirection(id, goal_position_chr, &current_ind_cfg_addr_);		  
 		  
 		  // Based on PRO units, we assume 2 bytes for current and 4 bytes for velocity 
 		  // and 4 bytes for position. Check that the end address has advanced 10 WORD positions (20 bytes)
 		  // if not, then we will be misaligned (maybe the workbench abstraction provided
 		  // a parameter with only 2 bytes ?? or more??). Be verbose just in case
-		  if (current_addr_ != start_addr_ + 20) {
+		  if (current_ind_cfg_addr_ != start_addr_ + 28) {
 			  log::error("SEED mods: Error setting up Data Indirection in the control table.");
-			  STRING formatted_msg = "The length of addresses configured (data provided via dyamixel_toolbox abstraction) was expected to be 20 but was only " + std::to_string(current_addr_ - start_addr_);
+			  STRING formatted_msg = "The length of addresses configured (data provided via dyamixel_toolbox abstraction) was expected to be 28 but was  " + std::to_string(current_ind_cfg_addr_ - start_addr_);
 			  
 			  log::error(formatted_msg.c_str());
 		  }
@@ -311,7 +320,10 @@ bool JointDynamixel::setSDKHandler(uint8_t actuator_id)
   bool result = false;
   const char* log = NULL;
 
-  result = dynamixel_workbench_->addSyncWriteHandler(actuator_id, "Goal_Position", &log);
+  /* SeedR, July 2021: modified writing t Goal position to use Indirect addressing as well
+    so that uniformity can be achieved when using different series of servos */
+  //result = dynamixel_workbench_->addSyncWriteHandler(actuator_id, "Goal_Position", &log);
+  result = dynamixel_workbench_->addSyncWriteHandler(ADDR_GOAL_POSITION_2, LENGTH_GOAL_POSITION_2, &log);
   if (result == false)
   {
     log::error(log);
@@ -447,8 +459,19 @@ std::vector<robotis_manipulator::ActuatorValue> JointDynamixel::receiveAllDynami
  while still relying on the toolbox abstraction
  attempt to configure indirection by relying on the Dynamixel Wokrbench
  abstraction layer as much as possible
+ 
+ id = ID of the servo
+ wb_toolbox_param_name = name of the parameter for which we're configuring indirection
+						the actual address of the parameter in the device ctrl table is
+						pulled "by name" via the wrobench abstraction layer
+indirection_cfg_address = 	the address where we configure the Indirection
+							aka "Indirect Adddress X"
+							(actual data is then shown at address of "Indirect Data X")
+							
+Indirection_cg_address may be passed by reference and this way we are
+always up to date on the last address used as it's incremented in this function.							
 *****************************************/
-void JointDynamixel::configureCtrlTableIndirection(uint8_t id, const char* wb_toolbox_param_name, uint16_t* indirect_address) {		  
+void JointDynamixel::configureCtrlTableIndirection(uint8_t id, const char* wb_toolbox_param_name, uint16_t* indirection_cfg_address) {		  
 	const char* log = NULL;
 	
 	const ControlItem* current_ctrl_item_ = dynamixel_workbench_->getItemInfo(id, wb_toolbox_param_name, &log);
@@ -460,26 +483,25 @@ void JointDynamixel::configureCtrlTableIndirection(uint8_t id, const char* wb_to
 		log::error(formated_error.c_str());
 	}	
 	else {
-	  uint16_t addr_to_mirror_ = current_ctrl_item_->address;
+	  uint16_t original_addr_to_mirror_ = current_ctrl_item_->address;
 	  uint8_t len_to_mirror_   = current_ctrl_item_->data_length;
 	  uint8_t data_[2];
 	  
-	  // the indirection addresses are not defined in dynamixel_item.cpp, so we'll need to hardcode them
 	  while (len_to_mirror_ > 0) {
-		  data_[0] = (uint8_t) (addr_to_mirror_ % 256);
-		  data_[1] = (uint8_t) (addr_to_mirror_ / 256);		  
+		  data_[0] = (uint8_t) (original_addr_to_mirror_ % 256);
+		  data_[1] = (uint8_t) (original_addr_to_mirror_ / 256);		  
 		  
-		  bool result = dynamixel_workbench_->writeRegister(id, *indirect_address, 2, data_, &log);
+		  bool result = dynamixel_workbench_->writeRegister(id, *indirection_cfg_address, 2, data_, &log);
 		  if (result == false)
 		  {
 			log::error(log);
-			STRING formated_error = "Failure configuring Indirect Data address \"" + std::to_string(*indirect_address) + "\" for ID " + std::to_string(id) + ". File: " + __FILE__;
+			STRING formated_error = "Failure configuring Indirect Data address \"" + std::to_string(*indirection_cfg_address) + "\" for ID " + std::to_string(id) + ". File: " + __FILE__;
 			log::error(formated_error.c_str());				
 		  }
 		  
 		  // loop control variables
-		  addr_to_mirror_++;
-		  (*indirect_address) += 2; // each indrect Adress is configured as a 2 byte (WORD) address, bc Ctl Table addresses in DYN2 are always 2 bytes
+		  original_addr_to_mirror_++;
+		  (*indirection_cfg_address) += 2; // each indrect Adress is configured as a 2 byte (WORD) address, bc Ctl Table addresses in DYN2 are always 2 bytes
 		  len_to_mirror_--;
 	  }
 	}
@@ -690,8 +712,11 @@ bool JointDynamixelProfileControl::setSDKHandler(uint8_t actuator_id)
 {
   bool result = false;
   const char* log = NULL;
-
-  result = dynamixel_workbench_->addSyncWriteHandler(actuator_id, "Goal_Position", &log);
+  
+  /* SeedR, July 2021: modified writing t Goal position to use Indirect addressing as well	
+    so that uniformity can be achieved when using different series of servos */
+  //result = dynamixel_workbench_->addSyncWriteHandler(actuator_id, "Goal_Position", &log);
+  result = dynamixel_workbench_->addSyncWriteHandler(ADDR_GOAL_POSITION_2, LENGTH_GOAL_POSITION_2, &log);
   if (result == false)
   {
     log::error(log);
