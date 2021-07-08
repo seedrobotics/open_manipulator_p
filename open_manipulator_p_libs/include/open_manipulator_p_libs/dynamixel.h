@@ -37,13 +37,13 @@ namespace dynamixel
 
 // Protocol 2.0 
 // SEEDR: Modified to use the "Indirect Data" Addresses
-#define ADDR_PRESENT_CURRENT_2  640 // shall be configured as "Ind Data 7" (2 bytes)
-#define ADDR_PRESENT_VELOCITY_2 642 // shall be configured as "Ind Data 9" (4 bytes)
-#define ADDR_PRESENT_POSITION_2 646 // shall be configured as "Ind Data 13" (4 bytes)
+#define ADDR_PRESENT_CURRENT_2  634 // shall be configured as "Ind Data 1" (2 bytes)
+#define ADDR_PRESENT_VELOCITY_2 636 // shall be configured as "Ind Data 3" (4 bytes)
+#define ADDR_PRESENT_POSITION_2 640 // shall be configured as "Ind Data 7" (4 bytes)
 
 // Note SEEDR June 2021: Modified to use Indirect Data addresses for GOAL POSITION
 // the other memory addresses don't seem to be used
-#define ADDR_GOAL_POSITION_2 650
+#define ADDR_GOAL_POSITION_2 658
 //#define ADDR_GOAL_POSITION_2 564 //116
 #define ADDR_VELOCITY_TRAJECTORY_2 584 //136
 #define ADDR_POSITION_TRAJECTORY_2 588 //140
@@ -53,33 +53,18 @@ namespace dynamixel
 
 // SEEDR April 2021: hardcode indirect data address as they're not covered
 // in the workbench tools
-#define ADDR_PRO_INDIRECT_ADDR_7_LOW 	0xB4  // 180
-#define ADDR_PRO_INDIRECT_ADDR_7_HIGH 	0xB5  // 181
-#define ADDR_PRO_INDIRECT_ADDR_8_LOW 	0xB6  // 182
-#define ADDR_PRO_INDIRECT_ADDR_8_HIGH 	0xB7  // 183
-#define ADDR_PRO_INDIRECT_ADDR_9_LOW 	0xB8  // 184
-#define ADDR_PRO_INDIRECT_ADDR_9_HIGH 	0xB9  // 185
-#define ADDR_PRO_INDIRECT_ADDR_10_LOW 	0xBA  // 186
-#define ADDR_PRO_INDIRECT_ADDR_10_HIGH 	0xBB  // 187
-#define ADDR_PRO_INDIRECT_ADDR_11_LOW 	0xBC  // 188
-#define ADDR_PRO_INDIRECT_ADDR_11_HIGH 	0xBD  // 189
-#define ADDR_PRO_INDIRECT_ADDR_12_LOW 	0xBE  // 190
-#define ADDR_PRO_INDIRECT_ADDR_12_HIGH 	0xBF  // 191
-#define ADDR_PRO_INDIRECT_ADDR_13_LOW 	0xC0  // 192
-#define ADDR_PRO_INDIRECT_ADDR_13_HIGH 	0xC1  // 193
-#define ADDR_PRO_INDIRECT_ADDR_14_LOW 	0xC2  // 194
-#define ADDR_PRO_INDIRECT_ADDR_14_HIGH 	0xC3  // 195
-#define ADDR_PRO_INDIRECT_ADDR_15_LOW 	0xC4  // 196
-#define ADDR_PRO_INDIRECT_ADDR_15_HIGH 	0xC5  // 197
-#define ADDR_PRO_INDIRECT_ADDR_16_LOW 	0xC6  // 198
-#define ADDR_PRO_INDIRECT_ADDR_16_HIGH 	0xC7  // 199
+#define ADDR_PRO_INDIRECT_ADDR_1_LOW 	  168
+
+/* To mirror goal position */
+#define ADDR_PRO_INDIRECT_ADDR_25_LOW 	216
+
 
 
 // SEEDR; extended support fo X series
-#define ADDR_XC_XM_XH_INDIRECT_ADDR_35_LOW 	590 // in the XM ctrl table, Position 640 reads Ind Data 35, so we need to
+#define ADDR_XC_XM_XH_INDIRECT_ADDR_29_LOW 	578 // in the XM ctrl table, Position 640 reads Ind Data 35, so we need to
 												// map to that position accordingly
-
-
+/* To mirror goal position */
+#define ADDR_XC_XM_XH_INDIRECT_ADDR_53_LOW 	626
 
 
 #define LENGTH_PRESENT_CURRENT_2 2

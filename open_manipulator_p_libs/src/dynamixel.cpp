@@ -174,29 +174,27 @@ bool JointDynamixel::initialize(std::vector<uint8_t> actuator_id, STRING dxl_dev
 	  
 	  Therefore, we need to find a match where the LOW byte of (Current, Velocity, POsition) triplet matches on both PRO and SEED units.
 	  
-	  We can achieve this with address 640 to 649.
-	  - In PRO units: 640 to 649 are indirect memory addresses ("Ind. Data 7" to "Ind Data 16"). 
-		These mirror the values of the memory addresses that we configure at positions 180 onwards.
-		We can abstractly view this as positions 180 onwards holding the "pointer" to the value we want to read and positions 640 onwards as the "de-referenced pointers"
+	  We can achieve this with address 634 to 643.
+	  - In PRO units: 634 to 643 are indirect memory addresses ("Ind. Data 1" to "Ind Data 10"). 
+		These mirror the values of the memory addresses that we configure at positions 168 onwards.
+		We can abstractly view this as positions 168 onwards holding the "pointer" to the value we want to read and positions 640 onwards as the "de-referenced pointers"
 		holding the value that they point to.
-	  - The LOWBYTE(640) = 128, so in SEED units, the triplet (Current, Velocity, POsition) starts at position 128 all the way to 137, because Seed units
-	    at present only look at the LOW value of the Address (say a request to read position 640, would ignore the HIGH Byte, and the low byte of 640=128).
+	  - The LOWBYTE(634) = 122, so in SEED units, the triplet (Current, Velocity, POsition) starts at position 122, because Seed units
+	    at present only look at the LOW value of the Address (say a request to read position 634, would ignore the HIGH Byte, and the low byte of 634=122).
 	   (these are also implemented as pointers in SEED units, but they're not user-configurable; they're hardcoded to allow integration into the Manipulator framework; actuator FW version >= 37 needed )
 	  
-	  - GOAL POSITION is added/mirrored after this triplet as a 4 byte value as well after the above, at positions 650 to 653
-		In Seed units this stays at position 138 to 141. Bear in mind that while this position in Seed units is a 4 byte 
-		position, the data range remains the same 0~4095. The use of 4 bytes is for compatibility purposes only.
+	  - The GOAL entries are mirrrored afterwards. To keep compatibility with the structure of the PRO and XM
+      control tables we reserved 14 bytes before the MIRRORED GOAL POSITION.
+      Therefore MIRRORED GOAL position is at position 146 in Seed Units, which means for PRO/XM units
+      it needs to be set up at position 658, so that the LOW BYTE matches.
+
+
+    IMPORTANT: we squeezed all mirrored data between pos 634 and 660 for compatibility with BOTH PRO and XM units
+    XM units have a bank of mirrored data exactly ranging from address 634 to 660
 	  
-	  For PRO and XM units, setup the pointers to mirror the data to addresses 640 to 649. 
-	  HEADS UP: bc memory addresses in PRO units are 2 byte (WORD), we configure the pointers in positions 180~199 (each pointer address is 2 bytes)
-	  but the actual mirrored value is always 1 byte (we provide the address for each of the bytes and the address is a 2 byte word).
-	  After configuration, the values are then shown in positions 640~649.
-
-	  See Robotis e-Manual for more information.
-
 	  *** 
-	  We'll now remap sequence of addresses 574-583 which corresponds to the triplet (Current, Velocity, Position), to positions 640~649 ("Ind.Data7" ~ "Ind.Data16").
-	  We shall NOT do this for SEED units bc this redirection is hardcoded in the fw
+	  We'll now remap the triplet PRESENT(Current, Velocity, Position), to the designated position
+	  We shall NOT do this for SEED units bc this redirection is hardcoded in their firmware already
 	  */
 	  
 	  // TORQUE must be off to be able to manipulate configurations of the actuator
@@ -204,29 +202,33 @@ bool JointDynamixel::initialize(std::vector<uint8_t> actuator_id, STRING dxl_dev
 	  //disable();
 	  
 	  const char *model_name_= dynamixel_workbench_->getModelName(id, &log);
-	  uint16_t start_addr_ = 0;
+	  uint16_t start_addr_present_params_ = 0;
+    uint16_t start_addr_goal_params_ = 0;
 	  uint16_t current_ind_cfg_addr_ = 0;
 	  
 	  /* SEEDR: this may be extended to include other families of actuators; */
 	  if (strncmp(model_name_, "SEED", strlen("SEED")) == 0) {
 		  // don't assign an address; seed units are already hard coded with this indirection
-		  start_addr_ = 0;
+		start_addr_present_params_ = 0; 
+    start_addr_goal_params_  = 0;
 		  
 	  } else if ( 	strncmp(model_name_, "XC", strlen("XC")) == 0 ||
 					strncmp(model_name_, "XM", strlen("XM")) == 0 ||
 					strncmp(model_name_, "XH", strlen("XH")) == 0   ) {
-		start_addr_ = ADDR_XC_XM_XH_INDIRECT_ADDR_35_LOW;
+		start_addr_present_params_ = ADDR_XC_XM_XH_INDIRECT_ADDR_29_LOW;
+    start_addr_goal_params_ = ADDR_XC_XM_XH_INDIRECT_ADDR_53_LOW;
 			
 	  } else if ( 	strncmp(model_name_, "PRO", strlen("PRO")) == 0 ) {
-		start_addr_ = ADDR_PRO_INDIRECT_ADDR_7_LOW;  
+		start_addr_present_params_ = ADDR_PRO_INDIRECT_ADDR_1_LOW; 
+    start_addr_goal_params_  = ADDR_PRO_INDIRECT_ADDR_25_LOW;
 		
 	  } else {
 		STRING formatted_msg = "INDIRECT DATA SETUP: The type of actuator is unhandled in dynamixel.cpp. Inderect data won't be at addresses 640 onwards. Device ID " + std::to_string(id) + " model name " + model_name_;
 		log::error(formatted_msg.c_str());
 	  }	  
 	  
-	  if (start_addr_ != 0) {
-		  current_ind_cfg_addr_ = start_addr_;
+	  if (start_addr_present_params_ != 0) {
+		  current_ind_cfg_addr_ = start_addr_present_params_;
 		  
 		  STRING present_current_st = "Present_Current";		  
 		  const char* present_current_chr = present_current_st.c_str();
@@ -239,23 +241,36 @@ bool JointDynamixel::initialize(std::vector<uint8_t> actuator_id, STRING dxl_dev
 		  STRING present_position_st = "Present_Position";		  
 		  const char* present_position_chr = present_position_st.c_str();
 		  configureCtrlTableIndirection(id, present_position_chr, &current_ind_cfg_addr_);
-		  
-		  // must redirect GOAL POSITION as well bc it is written with SYNC_WRITE which requires
-		  // the same Ctrl address on all devices.
-		  STRING goal_position_st = "Goal_Position";		  
-		  const char* goal_position_chr = goal_position_st.c_str();
-		  configureCtrlTableIndirection(id, goal_position_chr, &current_ind_cfg_addr_);		  
-		  
+	  
 		  // Based on PRO units, we assume 2 bytes for current and 4 bytes for velocity 
 		  // and 4 bytes for position. Check that the end address has advanced 10 WORD positions (20 bytes)
 		  // if not, then we will be misaligned (maybe the workbench abstraction provided
 		  // a parameter with only 2 bytes ?? or more??). Be verbose just in case
-		  if (current_ind_cfg_addr_ != start_addr_ + 28) {
-			  log::error("SEED mods: Error setting up Data Indirection in the control table.");
-			  STRING formatted_msg = "The length of addresses configured (data provided via dyamixel_toolbox abstraction) was expected to be 28 but was  " + std::to_string(current_ind_cfg_addr_ - start_addr_);
+		  if (current_ind_cfg_addr_ != start_addr_present_params_ + 20) {
+			  log::error("SEED mods: Error setting up Data Indirection for PRESENT values in the control table.");
+			  STRING formatted_msg = "The length of addresses configured (data provided via dyamixel_toolbox abstraction) was expected to be 20 but was  " + std::to_string(current_ind_cfg_addr_ - start_addr_present_params_);
 			  
 			  log::error(formatted_msg.c_str());
 		  }
+
+
+      // now setup Mirroring of Goal position
+      // it's not immeditaelly after the ones we setup above, so we need to do it separately
+		  // must redirect GOAL POSITION as well bc it is written with SYNC_WRITE which requires
+		  // the same Ctrl address on all devices.
+      if (start_addr_goal_params_ != 0) {
+        current_ind_cfg_addr_ = start_addr_goal_params_;
+        STRING goal_position_st = "Goal_Position";		  
+        const char* goal_position_chr = goal_position_st.c_str();
+        configureCtrlTableIndirection(id, goal_position_chr, &current_ind_cfg_addr_);		       
+        if (current_ind_cfg_addr_ != start_addr_goal_params_ + 8) {
+          log::error("SEED mods: Error setting up Data Indirection for GOAL POSITION in the control table.");
+          STRING formatted_msg = "The length of addresses configured (data provided via dyamixel_toolbox abstraction) was expected to be 8 but was  " + std::to_string(current_ind_cfg_addr_ - start_addr_goal_params_);
+          
+          log::error(formatted_msg.c_str());
+        }
+      }
+
 	  }	  
 
       result = dynamixel_workbench_->writeRegister(id, return_delay_time_char, 0, &log);
